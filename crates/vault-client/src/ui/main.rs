@@ -17,6 +17,7 @@ enum EditorAction {
     Close,
 }
 
+#[derive(Default)]
 pub struct MainView {
     pub filters: Filters,
     pub sort: SortState,
@@ -25,20 +26,6 @@ pub struct MainView {
     pub confirm_delete: bool,
     pub tags_input: String,
     pub focus_search: bool,
-}
-
-impl Default for MainView {
-    fn default() -> Self {
-        Self {
-            filters: Filters::default(),
-            sort: SortState::default(),
-            selected: None,
-            draft: None,
-            confirm_delete: false,
-            tags_input: String::new(),
-            focus_search: false,
-        }
-    }
 }
 
 impl MainView {

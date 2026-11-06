@@ -78,9 +78,7 @@ pub fn spawn_vault(
             db_path,
             backup_dir,
         };
-        state
-            .accounts
-            .sort_by(|a, b| a.normalized_email().cmp(&b.normalized_email()));
+        state.accounts.sort_by_key(|a| a.normalized_email());
         let _ = evt_tx.send(VaultEvent::Accounts(state.accounts.clone()));
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(500)) {
@@ -168,8 +166,7 @@ impl WorkerState {
         } else {
             self.accounts.push(account);
         }
-        self.accounts
-            .sort_by(|a, b| a.normalized_email().cmp(&b.normalized_email()));
+        self.accounts.sort_by_key(|a| a.normalized_email());
         Ok(())
     }
 
@@ -216,8 +213,7 @@ impl WorkerState {
             );
         }
         self.accounts = accounts;
-        self.accounts
-            .sort_by(|a, b| a.normalized_email().cmp(&b.normalized_email()));
+        self.accounts.sort_by_key(|a| a.normalized_email());
         Ok(())
     }
 }
