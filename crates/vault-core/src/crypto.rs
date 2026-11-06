@@ -61,6 +61,21 @@ pub struct EncryptedRecord {
     pub payload: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecordRow {
+    pub id: Uuid,
+    pub revision: u64,
+    pub change_seq: u64,
+    pub updated_at: i64,
+    pub deleted: bool,
+    #[serde(default)]
+    pub dirty: bool,
+    #[serde(with = "crate::codec::base64")]
+    pub nonce: Vec<u8>,
+    #[serde(with = "crate::codec::base64")]
+    pub payload: Vec<u8>,
+}
+
 fn random_array<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];
     OsRng.fill_bytes(&mut out);
