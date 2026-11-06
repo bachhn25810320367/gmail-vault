@@ -5,6 +5,7 @@ use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
 use vault_core::{Account, AccountStatus, Plan};
 
+use crate::state::SyncStatus;
 use crate::ui::editor::EditorDraft;
 use crate::ui::filters::{Filters, SortKey, SortState, sort_accounts};
 use crate::workers::vault::{VaultCommand, VaultHandle};
@@ -48,6 +49,7 @@ impl MainView {
         &mut self,
         ctx: &egui::Context,
         accounts: &[Account],
+        sync_status: &SyncStatus,
         handle: &VaultHandle,
     ) -> bool {
         let mut lock_requested = false;
@@ -207,9 +209,26 @@ impl MainView {
                     if ui.button("Khóa Vault").clicked() {
                         lock_requested = true;
                     }
-                    ui.add_enabled_ui(false, |ui| {
-                        let _ = ui.button("Sync now");
-                    });
+                    if ui
+                        .add_enabled(!sync_status.syncing, egui::Button::new("Sync now"))
+                        .clicked()
+                    {
+                        let _ = handle.tx.send(VaultCommand::SyncNow);
+                    }
+                    if sync_status.syncing {
+                        ui.spinner();
+                    }
+                    let label = sync_status.pending_label();
+                    let resp = if sync_status.pending > 0 {
+                        ui.colored_label(egui::Color32::from_rgb(230, 140, 0), &label)
+                    } else if sync_status.online {
+                        ui.colored_label(egui::Color32::from_rgb(0, 160, 0), &label)
+                    } else {
+                        ui.colored_label(egui::Color32::GRAY, &label)
+                    };
+                    if let Some(ref err) = sync_status.last_error {
+                        resp.on_hover_text(err);
+                    }
                 });
             });
         });

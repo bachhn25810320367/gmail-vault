@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use vault_core::sync::{PullResponse, PushItem, PushResponse, SyncApi};
 use vault_core::{KdfParams, WrappedKey};
 
 use crate::platform;
@@ -20,6 +21,15 @@ pub enum ApiError {
     },
     #[error("unauthorized")]
     Unauthorized,
+}
+
+impl ApiError {
+    fn into_core(self) -> vault_core::CoreError {
+        match self {
+            ApiError::Unauthorized => vault_core::CoreError::Unauthorized,
+            other => vault_core::CoreError::Network(other.to_string()),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -132,27 +142,19 @@ impl VaultApi {
         Ok(())
     }
 
-    async fn send(
+    async fn send_raw(
         &self,
         method: reqwest::Method,
-        path: &str,
-        body: Option<serde_json::Value>,
-        auth: bool,
+        url: &str,
+        token: Option<&str>,
+        body: Option<&serde_json::Value>,
     ) -> Result<reqwest::Response, ApiError> {
-        let url = format!("{}{path}", self.base_url);
-        let mut req = self.http.request(method, &url);
-        if auth {
-            let access = self
-                .access
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            if let Some(token) = access {
-                req = req.bearer_auth(token);
-            }
+        let mut req = self.http.request(method, url);
+        if let Some(t) = token {
+            req = req.bearer_auth(t);
         }
         if let Some(b) = body {
-            req = req.json(&b);
+            req = req.json(b);
         }
         let resp = req
             .send()
@@ -197,17 +199,67 @@ impl VaultApi {
         Ok(resp)
     }
 
-    async fn send_with_retry(
+    async fn send(
         &self,
         method: reqwest::Method,
         path: &str,
         body: Option<serde_json::Value>,
+        auth: bool,
     ) -> Result<reqwest::Response, ApiError> {
-        match self.send(method.clone(), path, body.clone(), true).await {
+        let url = format!("{}{path}", self.base_url);
+        let token = if auth {
+            self.access.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        } else {
+            None
+        };
+        self.send_raw(method, &url, token.as_deref(), body.as_ref())
+            .await
+    }
+
+    pub async fn send_authorized(
+        &self,
+        method: reqwest::Method,
+        url_or_path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<reqwest::Response, ApiError> {
+        let url = if url_or_path.starts_with("http://") || url_or_path.starts_with("https://") {
+            url_or_path.to_string()
+        } else {
+            format!("{}{url_or_path}", self.base_url)
+        };
+
+        let has_token = self
+            .access
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some();
+        if !has_token {
+            let email = self.email.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if !email.is_empty() {
+                self.refresh().await?;
+            }
+        }
+
+        let token = self
+            .access
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+
+        match self
+            .send_raw(method.clone(), &url, token.as_deref(), body.as_ref())
+            .await
+        {
             Ok(resp) => Ok(resp),
             Err(ApiError::Unauthorized) => {
                 self.refresh().await?;
-                self.send(method, path, body, true).await
+                let new_token = self
+                    .access
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                self.send_raw(method, &url, new_token.as_deref(), body.as_ref())
+                    .await
             }
             Err(e) => Err(e),
         }
@@ -309,7 +361,7 @@ impl VaultApi {
 
     #[allow(dead_code)]
     pub async fn authorized_get(&self, path: &str) -> Result<reqwest::Response, ApiError> {
-        self.send_with_retry(reqwest::Method::GET, path, None).await
+        self.send_authorized(reqwest::Method::GET, path, None).await
     }
 
     #[allow(dead_code)]
@@ -318,7 +370,7 @@ impl VaultApi {
         path: &str,
         body: Option<serde_json::Value>,
     ) -> Result<reqwest::Response, ApiError> {
-        self.send_with_retry(reqwest::Method::PUT, path, body).await
+        self.send_authorized(reqwest::Method::PUT, path, body).await
     }
 
     #[allow(dead_code)]
@@ -334,6 +386,32 @@ impl VaultApi {
         let body = serde_json::to_value(req).map_err(|e| ApiError::Network(e.to_string()))?;
         let _ = self.authorized_put("/v1/keys", Some(body)).await?;
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl SyncApi for VaultApi {
+    async fn pull(&self, since: u64, limit: u32) -> vault_core::Result<PullResponse> {
+        let url = format!("{}/v1/sync/changes?since={since}&limit={limit}", self.base_url);
+        let res = self
+            .send_authorized(reqwest::Method::GET, &url, None)
+            .await
+            .map_err(ApiError::into_core)?;
+        res.json()
+            .await
+            .map_err(|e| vault_core::CoreError::Network(e.to_string()))
+    }
+
+    async fn push(&self, items: Vec<PushItem>) -> vault_core::Result<PushResponse> {
+        let url = format!("{}/v1/sync/push", self.base_url);
+        let body = serde_json::json!({ "records": items });
+        let res = self
+            .send_authorized(reqwest::Method::POST, &url, Some(body))
+            .await
+            .map_err(ApiError::into_core)?;
+        res.json()
+            .await
+            .map_err(|e| vault_core::CoreError::Network(e.to_string()))
     }
 }
 

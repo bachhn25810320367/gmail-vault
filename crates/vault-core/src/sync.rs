@@ -6,37 +6,39 @@ use crate::error::Result;
 use crate::model::Account;
 use crate::store::LocalStore;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PushItem {
     pub id: Uuid,
     pub base_revision: u64,
     pub updated_at: i64,
     pub deleted: bool,
+    #[serde(with = "crate::codec::base64")]
     pub nonce: Vec<u8>,
+    #[serde(with = "crate::codec::base64")]
     pub payload: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PullResponse {
     pub items: Vec<RecordRow>,
     pub next_since: u64,
     pub has_more: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PushResponse {
     pub accepted: Vec<Accepted>,
     pub conflicts: Vec<Conflict>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Accepted {
     pub id: Uuid,
     pub revision: u64,
     pub change_seq: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Conflict {
     pub id: Uuid,
     pub server: RecordRow,
@@ -441,5 +443,21 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert!(all.iter().any(|r| r.id == account.id && r.deleted));
         assert!(all.iter().any(|r| r.id != account.id && !r.deleted));
+    }
+
+    #[test]
+    fn push_item_serializes_base64_and_snake_case() {
+        let item = PushItem {
+            id: Uuid::new_v4(),
+            base_revision: 2,
+            updated_at: 5,
+            deleted: false,
+            nonce: vec![1; 24],
+            payload: vec![2; 8],
+        };
+        let value = serde_json::to_value(&item).unwrap();
+        assert_eq!(value["base_revision"], 2);
+        assert!(value["nonce"].is_string());
+        assert!(value["payload"].is_string());
     }
 }

@@ -1,12 +1,15 @@
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
 use eframe::egui;
+use vault_core::sync::SyncApi;
 use vault_core::{Account, LocalMeta, LocalStore};
 
+use crate::api::VaultApi;
 use crate::config::{ClientConfig, ThemePref};
 use crate::platform;
-use crate::state::{Screen, SetupForm};
+use crate::state::{Screen, SetupForm, SyncStatus};
 use crate::ui::main::MainView;
 use crate::ui::setup::{SetupEvent, start_setup, validate_setup};
 use crate::ui::unlock::{UnlockEvent, start_unlock};
@@ -29,6 +32,8 @@ pub struct VaultApp {
     pub last_activity: Instant,
     #[allow(dead_code)]
     pub toast: Option<(String, Instant)>,
+    pub api: Option<Arc<VaultApi>>,
+    pub sync_status: SyncStatus,
 }
 
 impl VaultApp {
@@ -71,6 +76,8 @@ impl VaultApp {
             main_view: MainView::default(),
             last_activity: Instant::now(),
             toast: None,
+            api: None,
+            sync_status: SyncStatus::default(),
         }
     }
 
@@ -81,6 +88,8 @@ impl VaultApp {
         self.accounts.clear();
         self.unlock_password.clear();
         self.main_view.clear_sensitive();
+        self.api = None;
+        self.sync_status = SyncStatus::default();
         self.screen = Screen::Unlock;
     }
 
@@ -308,6 +317,12 @@ impl eframe::App for VaultApp {
                 UnlockEvent::Done(session) => {
                     self.error = None;
                     let session = *session;
+                    let api = Arc::new(VaultApi::new(&session.meta.server_url));
+                    api.set_email(&session.meta.email);
+                    self.api = Some(api.clone());
+                    let sync_api: Arc<dyn SyncApi> = api;
+                    let interval =
+                        Duration::from_secs(self.config.sync_interval_secs.clamp(15, 600));
                     let handle = spawn_vault(
                         session.meta,
                         session.vault,
@@ -315,9 +330,12 @@ impl eframe::App for VaultApp {
                         session.accounts.clone(),
                         platform::db_path(),
                         platform::backup_dir(),
+                        sync_api,
+                        interval,
                     );
                     self.accounts = session.accounts;
                     self.vault = Some(handle);
+                    self.sync_status = SyncStatus::default();
                     self.screen = Screen::Main;
                     self.last_activity = Instant::now();
                 }
@@ -341,6 +359,9 @@ impl eframe::App for VaultApp {
                         self.toast =
                             Some((format!("Đã backup: {}", path.display()), Instant::now()));
                     }
+                    VaultEvent::SyncStatus(s) => {
+                        self.sync_status = s;
+                    }
                 }
             }
         }
@@ -352,7 +373,12 @@ impl eframe::App for VaultApp {
         match self.screen {
             Screen::Main => {
                 if let Some(ref handle) = self.vault {
-                    if self.main_view.show(ctx, &self.accounts, handle) {
+                    if self.main_view.show(
+                        ctx,
+                        &self.accounts,
+                        &self.sync_status,
+                        handle,
+                    ) {
                         self.lock();
                     }
                 } else {
