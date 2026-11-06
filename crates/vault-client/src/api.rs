@@ -142,7 +142,11 @@ impl VaultApi {
         let url = format!("{}{path}", self.base_url);
         let mut req = self.http.request(method, &url);
         if auth {
-            let access = self.access.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let access = self
+                .access
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             if let Some(token) = access {
                 req = req.bearer_auth(token);
             }
@@ -150,7 +154,10 @@ impl VaultApi {
         if let Some(b) = body {
             req = req.json(&b);
         }
-        let resp = req.send().await.map_err(|e| ApiError::Network(e.to_string()))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(ApiError::Unauthorized);
@@ -211,13 +218,20 @@ impl VaultApi {
         let encoded_email = url_encode(email);
         let path = format!("/v1/auth/kdf?email={encoded_email}");
         let resp = self.send(reqwest::Method::GET, &path, None, false).await?;
-        resp.json().await.map_err(|e| ApiError::Network(e.to_string()))
+        resp.json()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))
     }
 
     pub async fn register(&self, req: &RegisterRequest) -> Result<AuthResponse, ApiError> {
         let body = serde_json::to_value(req).map_err(|e| ApiError::Network(e.to_string()))?;
         let resp = self
-            .send(reqwest::Method::POST, "/v1/auth/register", Some(body), false)
+            .send(
+                reqwest::Method::POST,
+                "/v1/auth/register",
+                Some(body),
+                false,
+            )
             .await?;
         let auth_resp: AuthResponse = resp
             .json()
@@ -310,7 +324,9 @@ impl VaultApi {
     #[allow(dead_code)]
     pub async fn get_keys(&self) -> Result<KeysResponse, ApiError> {
         let resp = self.authorized_get("/v1/keys").await?;
-        resp.json().await.map_err(|e| ApiError::Network(e.to_string()))
+        resp.json()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))
     }
 
     #[allow(dead_code)]

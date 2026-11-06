@@ -92,10 +92,42 @@ mod tests {
 
     #[test]
     fn validate_setup_rejects_bad_input() {
-        assert!(validate_setup("https://vault.example.com", "a@b.co", "long-enough-pass", "long-enough-pass").is_ok());
-        assert!(validate_setup("vault.example.com", "a@b.co", "long-enough-pass", "long-enough-pass").is_err());
-        assert!(validate_setup("https://vault.example.com", "bad", "long-enough-pass", "long-enough-pass").is_err());
+        assert!(
+            validate_setup(
+                "https://vault.example.com",
+                "a@b.co",
+                "long-enough-pass",
+                "long-enough-pass"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_setup(
+                "vault.example.com",
+                "a@b.co",
+                "long-enough-pass",
+                "long-enough-pass"
+            )
+            .is_err()
+        );
+        assert!(
+            validate_setup(
+                "https://vault.example.com",
+                "bad",
+                "long-enough-pass",
+                "long-enough-pass"
+            )
+            .is_err()
+        );
         assert!(validate_setup("https://vault.example.com", "a@b.co", "short", "short").is_err());
-        assert!(validate_setup("https://vault.example.com", "a@b.co", "long-enough-pass", "different-pass").is_err());
+        assert!(
+            validate_setup(
+                "https://vault.example.com",
+                "a@b.co",
+                "long-enough-pass",
+                "different-pass"
+            )
+            .is_err()
+        );
     }
 }
