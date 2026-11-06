@@ -5,3 +5,24 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+axum.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+jsonwebtoken.workspace = true
+argon2.workspace = true
+sha2.workspace = true
+rand.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dotenvy.workspace = true
+tower-http.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util.workspace = true

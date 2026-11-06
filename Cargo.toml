@@ -32,3 +32,12 @@ zxcvbn = "3"
 csv = "1"
 unicode-normalization = "0.1"
 tempfile = "3"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "migrate", "uuid", "chrono"] }
+jsonwebtoken = "9"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["limit", "trace"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+http-body-util = "0.1"
