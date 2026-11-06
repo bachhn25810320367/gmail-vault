@@ -190,7 +190,11 @@ impl MainView {
                         ui.selectable_value(&mut self.sort.key, SortKey::Plan, "Plan");
                         ui.selectable_value(&mut self.sort.key, SortKey::Status, "Trạng thái");
                         ui.selectable_value(&mut self.sort.key, SortKey::ExpiresOn, "Hết hạn");
-                        ui.selectable_value(&mut self.sort.key, SortKey::LastUsedOn, "Dùng gần nhất");
+                        ui.selectable_value(
+                            &mut self.sort.key,
+                            SortKey::LastUsedOn,
+                            "Dùng gần nhất",
+                        );
                         ui.selectable_value(&mut self.sort.key, SortKey::UpdatedAt, "Cập nhật");
                     });
 
@@ -349,7 +353,11 @@ impl MainView {
                                     ui.label("Mật khẩu:");
                                     ui.horizontal(|ui| {
                                         ui.text_edit_singleline(&mut draft.account.password);
-                                        if ui.button("📋").on_hover_text("Sao chép mật khẩu").clicked() {
+                                        if ui
+                                            .button("📋")
+                                            .on_hover_text("Sao chép mật khẩu")
+                                            .clicked()
+                                        {
                                             ctx.copy_text(draft.account.password.clone());
                                         }
                                     });
@@ -412,11 +420,12 @@ impl MainView {
                                     let mut rec_email =
                                         draft.account.recovery_email.clone().unwrap_or_default();
                                     if ui.text_edit_singleline(&mut rec_email).changed() {
-                                        draft.account.recovery_email = if rec_email.trim().is_empty() {
-                                            None
-                                        } else {
-                                            Some(rec_email)
-                                        };
+                                        draft.account.recovery_email =
+                                            if rec_email.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(rec_email)
+                                            };
                                     }
                                     ui.end_row();
 
@@ -424,11 +433,12 @@ impl MainView {
                                     let mut rec_phone =
                                         draft.account.recovery_phone.clone().unwrap_or_default();
                                     if ui.text_edit_singleline(&mut rec_phone).changed() {
-                                        draft.account.recovery_phone = if rec_phone.trim().is_empty() {
-                                            None
-                                        } else {
-                                            Some(rec_phone)
-                                        };
+                                        draft.account.recovery_phone =
+                                            if rec_phone.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(rec_phone)
+                                            };
                                     }
                                     ui.end_row();
 
@@ -478,9 +488,8 @@ impl MainView {
                                         .map(|s| s.trim().to_string())
                                         .filter(|s| !s.is_empty())
                                         .collect();
-                                    editor_action = Some(EditorAction::Save(
-                                        draft.clone().into_account(),
-                                    ));
+                                    editor_action =
+                                        Some(EditorAction::Save(draft.clone().into_account()));
                                 }
 
                                 if !draft.is_new {

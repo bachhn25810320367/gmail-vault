@@ -338,10 +338,8 @@ impl eframe::App for VaultApp {
                         self.error = Some(err);
                     }
                     VaultEvent::BackupDone(path) => {
-                        self.toast = Some((
-                            format!("Đã backup: {}", path.display()),
-                            Instant::now(),
-                        ));
+                        self.toast =
+                            Some((format!("Đã backup: {}", path.display()), Instant::now()));
                     }
                 }
             }

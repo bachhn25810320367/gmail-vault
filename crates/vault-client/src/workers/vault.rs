@@ -210,7 +210,10 @@ impl WorkerState {
             if row.deleted {
                 continue;
             }
-            accounts.push(self.vault.decrypt_account(row.id, &row.nonce, &row.payload)?);
+            accounts.push(
+                self.vault
+                    .decrypt_account(row.id, &row.nonce, &row.payload)?,
+            );
         }
         self.accounts = accounts;
         self.accounts

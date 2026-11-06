@@ -90,11 +90,7 @@ pub fn sort_accounts(rows: &mut [&Account], sort: &SortState) {
             SortKey::LastUsedOn => a.last_used_on.cmp(&b.last_used_on),
             SortKey::UpdatedAt => a.updated_at.cmp(&b.updated_at),
         };
-        if sort.descending {
-            ord.reverse()
-        } else {
-            ord
-        }
+        if sort.descending { ord.reverse() } else { ord }
     });
 }
 
