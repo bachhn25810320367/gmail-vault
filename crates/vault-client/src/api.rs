@@ -208,7 +208,10 @@ impl VaultApi {
     ) -> Result<reqwest::Response, ApiError> {
         let url = format!("{}{path}", self.base_url);
         let token = if auth {
-            self.access.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            self.access
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
         } else {
             None
         };
@@ -392,7 +395,10 @@ impl VaultApi {
 #[async_trait::async_trait]
 impl SyncApi for VaultApi {
     async fn pull(&self, since: u64, limit: u32) -> vault_core::Result<PullResponse> {
-        let url = format!("{}/v1/sync/changes?since={since}&limit={limit}", self.base_url);
+        let url = format!(
+            "{}/v1/sync/changes?since={since}&limit={limit}",
+            self.base_url
+        );
         let res = self
             .send_authorized(reqwest::Method::GET, &url, None)
             .await

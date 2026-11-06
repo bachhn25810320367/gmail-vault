@@ -373,12 +373,10 @@ impl eframe::App for VaultApp {
         match self.screen {
             Screen::Main => {
                 if let Some(ref handle) = self.vault {
-                    if self.main_view.show(
-                        ctx,
-                        &self.accounts,
-                        &self.sync_status,
-                        handle,
-                    ) {
+                    if self
+                        .main_view
+                        .show(ctx, &self.accounts, &self.sync_status, handle)
+                    {
                         self.lock();
                     }
                 } else {
