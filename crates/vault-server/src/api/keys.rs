@@ -36,6 +36,9 @@ pub struct KeysResponse {
     pub recovery_wrapped_key: Option<WrappedKeyDto>,
 }
 
+type KeysRow = (String, Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+type UserKeysRow = (String, Vec<u8>, Vec<u8>);
+
 fn internal(e: impl std::fmt::Display) -> AppError {
     AppError::Internal(e.to_string())
 }
@@ -44,7 +47,7 @@ async fn get_keys(
     user: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<KeysResponse>, AppError> {
-    let row: Option<(String, Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>)> = sqlx::query_as(
+    let row: Option<KeysRow> = sqlx::query_as(
         "SELECT kdf_params, wrapped_vault_key, wrapped_key_nonce,
                 recovery_wrapped_key, recovery_nonce
          FROM users WHERE id = ?",
@@ -94,7 +97,7 @@ async fn put_keys(
     }
 
     let user_id = user.user_id.to_string();
-    let current: Option<(String, Vec<u8>, Vec<u8>)> = sqlx::query_as(
+    let current: Option<UserKeysRow> = sqlx::query_as(
         "SELECT kdf_params, wrapped_vault_key, wrapped_key_nonce FROM users WHERE id = ?",
     )
     .bind(&user_id)

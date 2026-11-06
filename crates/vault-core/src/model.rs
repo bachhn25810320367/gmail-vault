@@ -9,15 +9,17 @@ use crate::error::{CoreError, Result};
 
 pub const SCHEMA_VERSION: u16 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Plan {
+    #[default]
     Free,
     Pro,
     Ultra,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AccountStatus {
+    #[default]
     Active,
     Banned,
     Sold,
@@ -73,12 +75,6 @@ impl Plan {
     }
 }
 
-impl Default for Plan {
-    fn default() -> Self {
-        Plan::Free
-    }
-}
-
 impl AccountStatus {
     pub fn as_str(&self) -> &str {
         match self {
@@ -88,12 +84,6 @@ impl AccountStatus {
             AccountStatus::Deleted => "Deleted",
             AccountStatus::Other(s) => s,
         }
-    }
-}
-
-impl Default for AccountStatus {
-    fn default() -> Self {
-        AccountStatus::Active
     }
 }
 
@@ -197,10 +187,10 @@ impl Account {
                 ));
             }
         }
-        if let (Some(created), Some(expires)) = (self.created_on, self.expires_on) {
-            if expires < created {
-                return Err(CoreError::Validation("ngày hết hạn trước ngày tạo".into()));
-            }
+        if let (Some(created), Some(expires)) = (self.created_on, self.expires_on)
+            && expires < created
+        {
+            return Err(CoreError::Validation("ngày hết hạn trước ngày tạo".into()));
         }
         if self.custom_fields.len() > 50 {
             return Err(CoreError::Validation("tối đa 50 custom field".into()));

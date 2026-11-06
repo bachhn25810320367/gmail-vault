@@ -464,15 +464,14 @@ pub fn list_backups(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("db") {
-            if path
+        if path.extension().and_then(|e| e.to_str()) == Some("db")
+            && path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .map(|n| n.starts_with("vault-"))
                 .unwrap_or(false)
-            {
-                out.push(path);
-            }
+        {
+            out.push(path);
         }
     }
     out.sort();

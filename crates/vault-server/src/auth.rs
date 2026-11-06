@@ -47,6 +47,10 @@ pub struct AuthUser {
     pub user_id: Uuid,
 }
 
+type LoginRow = (String, String, String, Vec<u8>, Vec<u8>);
+type RecoverRow = (String, String, String, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+type UserKeysRow = (String, Vec<u8>, Vec<u8>);
+
 fn internal(e: impl std::fmt::Display) -> AppError {
     AppError::Internal(e.to_string())
 }
@@ -214,7 +218,7 @@ impl AuthService {
 
     pub async fn login(&self, req: LoginRequest) -> Result<AuthResponse, AppError> {
         let email = req.email.trim().to_lowercase();
-        let row: Option<(String, String, String, Vec<u8>, Vec<u8>)> = sqlx::query_as(
+        let row: Option<LoginRow> = sqlx::query_as(
             "SELECT id, auth_hash, kdf_params, wrapped_vault_key, wrapped_key_nonce
              FROM users WHERE email = ?",
         )
@@ -244,16 +248,15 @@ impl AuthService {
 
     pub async fn recover_login(&self, req: RecoverLoginRequest) -> Result<AuthResponse, AppError> {
         let email = req.email.trim().to_lowercase();
-        let row: Option<(String, String, String, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> =
-            sqlx::query_as(
-                "SELECT id, recovery_auth_hash, kdf_params, wrapped_vault_key, wrapped_key_nonce,
+        let row: Option<RecoverRow> = sqlx::query_as(
+            "SELECT id, recovery_auth_hash, kdf_params, wrapped_vault_key, wrapped_key_nonce,
                     recovery_wrapped_key, recovery_nonce
              FROM users WHERE email = ? AND recovery_auth_hash IS NOT NULL",
-            )
-            .bind(&email)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(internal)?;
+        )
+        .bind(&email)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(internal)?;
         let Some((
             id,
             recovery_auth_hash,
@@ -287,13 +290,14 @@ impl AuthService {
     }
 
     async fn keys_for(&self, user_id: Uuid) -> Result<(KdfDto, WrappedKeyDto), AppError> {
-        let (kdf_params, wrapped_key, nonce): (String, Vec<u8>, Vec<u8>) = sqlx::query_as(
+        let row: UserKeysRow = sqlx::query_as(
             "SELECT kdf_params, wrapped_vault_key, wrapped_key_nonce FROM users WHERE id = ?",
         )
         .bind(user_id.to_string())
         .fetch_one(&self.pool)
         .await
         .map_err(|_| AppError::Unauthorized)?;
+        let (kdf_params, wrapped_key, nonce) = row;
         let kdf: KdfDto = serde_json::from_str(&kdf_params).map_err(internal)?;
         Ok((
             kdf,

@@ -18,7 +18,7 @@ impl Config {
     pub fn from_map(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let database_url = get("DATABASE_URL").ok_or("DATABASE_URL is required")?;
         let secret = get("JWT_SECRET").ok_or("JWT_SECRET is required")?;
-        if secret.as_bytes().len() < 32 {
+        if secret.len() < 32 {
             return Err("JWT_SECRET must be at least 32 bytes".into());
         }
         let bind_addr = get("BIND_ADDR")
