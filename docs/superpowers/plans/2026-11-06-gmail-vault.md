@@ -3167,7 +3167,7 @@ git commit -m "feat(client): add setup, unlock, config, and API client"
 - Produces:
   - `VaultCommand { Save, SaveMany, Delete, MarkUsed, Reload, BackupNow, Shutdown }`.
   - `VaultEvent { Accounts, Error, BackupDone }`.
-  - `VaultHandle { tx, rx }`, `spawn_vault(...)`.
+  - `VaultHandle { tx, rx, join }` with `shutdown()`, `spawn_vault(...)`.
   - `Filters::{matches, apply}`, `normalize_for_search`.
   - `SortKey`, `SortState`, `sort_accounts`.
   - `EditorDraft::{new, from_account, validate, into_account}`.
@@ -3261,22 +3261,24 @@ mod tests {
         handle.tx.send(VaultCommand::Save(account)).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         loop {
-            match handle.rx.recv_timeout(Duration::from_millis(100)).unwrap() {
-                VaultEvent::Accounts(accounts) if accounts.len() == 1 => break,
-                _ if std::time::Instant::now() > deadline => panic!("timeout"),
-                _ => {}
+            match handle.rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(VaultEvent::Accounts(accounts)) if accounts.len() == 1 => break,
+                Ok(_) => {}
+                Err(_) if std::time::Instant::now() > deadline => panic!("timeout"),
+                Err(_) => {}
             }
         }
         handle.tx.send(VaultCommand::Delete(id)).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         loop {
-            match handle.rx.recv_timeout(Duration::from_millis(100)).unwrap() {
-                VaultEvent::Accounts(accounts) if accounts.is_empty() => break,
-                _ if std::time::Instant::now() > deadline => panic!("timeout"),
-                _ => {}
+            match handle.rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(VaultEvent::Accounts(accounts)) if accounts.is_empty() => break,
+                Ok(_) => {}
+                Err(_) if std::time::Instant::now() > deadline => panic!("timeout"),
+                Err(_) => {}
             }
         }
-        handle.tx.send(VaultCommand::Shutdown).unwrap();
+        handle.shutdown();
     }
 }
 ```
@@ -3427,6 +3429,14 @@ pub enum VaultEvent {
 pub struct VaultHandle {
     pub tx: Sender<VaultCommand>,
     pub rx: Receiver<VaultEvent>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl VaultHandle {
+    pub fn shutdown(mut self) {
+        let _ = self.tx.send(VaultCommand::Shutdown);
+        if let Some(join) = self.join.take() { let _ = join.join(); }
+    }
 }
 
 struct WorkerState {
@@ -3448,7 +3458,7 @@ pub fn spawn_vault(
 ) -> VaultHandle {
     let (tx, cmd_rx) = unbounded();
     let (evt_tx, rx) = unbounded();
-    std::thread::spawn(move || {
+    let worker = std::thread::spawn(move || {
         let mut state = WorkerState { meta, store, vault, accounts, db_path, backup_dir };
         state.accounts.sort_by(|a, b| a.normalized_email().cmp(&b.normalized_email()));
         let _ = evt_tx.send(VaultEvent::Accounts(state.accounts.clone()));
@@ -3486,7 +3496,7 @@ pub fn spawn_vault(
             }
         }
     });
-    VaultHandle { tx, rx }
+    VaultHandle { tx, rx, join: Some(worker) }
 }
 
 impl WorkerState {
@@ -3825,7 +3835,7 @@ let handle = spawn_vault(
     Arc::new(NoopApi), Duration::from_secs(3600),
 );
 ```
-with a local `NoopApi` implementing `SyncApi` by returning empty pull/push responses. Use `handle.shutdown()` after Task 14 adds the join handle; until then the test can send `Shutdown`.
+with a local `NoopApi` implementing `SyncApi` by returning empty pull/push responses. Use `handle.shutdown()`; `VaultHandle` has carried a join handle since Task 10, so the worker is fully stopped before the test reopens SQLite.
 
 - [ ] **Step 6: Wire app status and banner**
 
@@ -5150,21 +5160,10 @@ pub fn spawn_vault(
 ) -> VaultHandle
 ```
 
-`VaultHandle` gains a join handle:
+`VaultHandle` already has `tx`, `rx`, and `join` from Task 10. Add the logout variant to the existing impl:
 
 ```rust
-pub struct VaultHandle {
-    pub tx: Sender<VaultCommand>,
-    pub rx: Receiver<VaultEvent>,
-    join: Option<std::thread::JoinHandle<()>>,
-}
-
 impl VaultHandle {
-    pub fn shutdown(mut self) {
-        let _ = self.tx.send(VaultCommand::Shutdown);
-        if let Some(join) = self.join.take() { let _ = join.join(); }
-    }
-
     pub fn shutdown_with_logout(mut self) {
         let _ = self.tx.send(VaultCommand::LogoutAndShutdown);
         if let Some(join) = self.join.take() { let _ = join.join(); }
@@ -5172,7 +5171,7 @@ impl VaultHandle {
 }
 ```
 
-`spawn_vault` must keep the `JoinHandle` returned by `thread::spawn` and return `VaultHandle { tx, rx, join: Some(worker) }`. Update every call site — the Task 10 worker test (6 → 10), the Task 11 worker test, and `start_vault` (8 → 10) — inserting `auth_key` after `accounts` and `admin_api` after `sync_api`, with the `Duration` interval last. In the Task 10 worker test replace `handle.tx.send(VaultCommand::Shutdown).unwrap()` with `handle.shutdown()` so SQLite is closed before the test reopens the database.
+Update every `spawn_vault` call site — the Task 10 worker test (6 → 10), the Task 11 worker test, and `start_vault` (8 → 10) — inserting `auth_key` after `accounts` and `admin_api` after `sync_api`, with the `Duration` interval last. The Task 10 worker test keeps using `handle.shutdown()` so SQLite is closed before the test reopens the database.
 
 Extend the enums:
 
