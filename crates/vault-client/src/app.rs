@@ -1,12 +1,16 @@
+use std::time::Instant;
+
 use crossbeam_channel::Receiver;
 use eframe::egui;
-use vault_core::{LocalMeta, LocalStore};
+use vault_core::{Account, LocalMeta, LocalStore};
 
 use crate::config::{ClientConfig, ThemePref};
 use crate::platform;
-use crate::state::{Screen, SetupForm, UnlockedSession};
+use crate::state::{Screen, SetupForm};
+use crate::ui::main::MainView;
 use crate::ui::setup::{SetupEvent, start_setup, validate_setup};
 use crate::ui::unlock::{UnlockEvent, start_unlock};
+use crate::workers::vault::{VaultEvent, VaultHandle, spawn_vault};
 
 pub struct VaultApp {
     pub config: ClientConfig,
@@ -15,10 +19,16 @@ pub struct VaultApp {
     pub unlock_password: String,
     pub recovery_code: Option<String>,
     pub error: Option<String>,
-    pub session: Option<UnlockedSession>,
     pub local_meta: Option<LocalMeta>,
     pub setup_rx: Option<Receiver<SetupEvent>>,
     pub unlock_rx: Option<Receiver<UnlockEvent>>,
+    pub vault: Option<VaultHandle>,
+    pub accounts: Vec<Account>,
+    pub main_view: MainView,
+    #[allow(dead_code)]
+    pub last_activity: Instant,
+    #[allow(dead_code)]
+    pub toast: Option<(String, Instant)>,
 }
 
 impl VaultApp {
@@ -53,11 +63,25 @@ impl VaultApp {
             unlock_password: String::new(),
             recovery_code: None,
             error: None,
-            session: None,
             local_meta,
             setup_rx: None,
             unlock_rx: None,
+            vault: None,
+            accounts: Vec::new(),
+            main_view: MainView::default(),
+            last_activity: Instant::now(),
+            toast: None,
         }
+    }
+
+    pub fn lock(&mut self) {
+        if let Some(handle) = self.vault.take() {
+            handle.shutdown();
+        }
+        self.accounts.clear();
+        self.unlock_password.clear();
+        self.main_view.clear_sensitive();
+        self.screen = Screen::Unlock;
     }
 
     pub fn render_setup(&mut self, ui: &mut egui::Ui) {
@@ -225,26 +249,6 @@ impl VaultApp {
         }
     }
 
-    pub fn render_placeholder_main(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
-            ui.heading("Gmail Vault - Đã mở khóa");
-            ui.add_space(10.0);
-        });
-
-        if let Some(ref session) = self.session {
-            ui.label(format!("Tài khoản: {}", session.meta.email));
-            ui.label(format!("Số lượng bản ghi: {}", session.accounts.len()));
-        }
-
-        ui.add_space(16.0);
-        if ui.button("Khóa Vault").clicked() {
-            self.session = None;
-            self.unlock_password.clear();
-            self.screen = Screen::Unlock;
-        }
-    }
-
     #[allow(dead_code)]
     pub fn render_fatal(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
@@ -267,6 +271,10 @@ impl VaultApp {
 
 impl eframe::App for VaultApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| !i.events.is_empty()) {
+            self.last_activity = Instant::now();
+        }
+
         // Poll background tasks
         if let Some(ref rx) = self.setup_rx
             && let Ok(event) = rx.try_recv()
@@ -299,8 +307,19 @@ impl eframe::App for VaultApp {
             match event {
                 UnlockEvent::Done(session) => {
                     self.error = None;
-                    self.session = Some(*session);
+                    let session = *session;
+                    let handle = spawn_vault(
+                        session.meta,
+                        session.vault,
+                        session.store,
+                        session.accounts.clone(),
+                        platform::db_path(),
+                        platform::backup_dir(),
+                    );
+                    self.accounts = session.accounts;
+                    self.vault = Some(handle);
                     self.screen = Screen::Main;
+                    self.last_activity = Instant::now();
                 }
                 UnlockEvent::Failed(err) => {
                     self.error = Some(err);
@@ -308,16 +327,52 @@ impl eframe::App for VaultApp {
             }
         }
 
-        if self.setup_rx.is_some() || self.unlock_rx.is_some() {
+        if let Some(ref handle) = self.vault {
+            while let Ok(event) = handle.rx.try_recv() {
+                match event {
+                    VaultEvent::Accounts(accounts) => {
+                        self.main_view.retain_ids(&accounts);
+                        self.accounts = accounts;
+                    }
+                    VaultEvent::Error(err) => {
+                        self.error = Some(err);
+                    }
+                    VaultEvent::BackupDone(path) => {
+                        self.toast = Some((
+                            format!("Đã backup: {}", path.display()),
+                            Instant::now(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        if self.setup_rx.is_some() || self.unlock_rx.is_some() || self.vault.is_some() {
             ctx.request_repaint();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| match self.screen {
-            Screen::Setup => self.render_setup(ui),
-            Screen::ShowRecovery => self.render_recovery(ui),
-            Screen::Unlock => self.render_unlock(ui),
-            Screen::Main => self.render_placeholder_main(ui),
-            Screen::Fatal => self.render_fatal(ui),
-        });
+        match self.screen {
+            Screen::Main => {
+                if let Some(ref handle) = self.vault {
+                    if self.main_view.show(ctx, &self.accounts, handle) {
+                        self.lock();
+                    }
+                } else {
+                    self.lock();
+                }
+            }
+            Screen::Setup => {
+                egui::CentralPanel::default().show(ctx, |ui| self.render_setup(ui));
+            }
+            Screen::ShowRecovery => {
+                egui::CentralPanel::default().show(ctx, |ui| self.render_recovery(ui));
+            }
+            Screen::Unlock => {
+                egui::CentralPanel::default().show(ctx, |ui| self.render_unlock(ui));
+            }
+            Screen::Fatal => {
+                egui::CentralPanel::default().show(ctx, |ui| self.render_fatal(ui));
+            }
+        }
     }
 }

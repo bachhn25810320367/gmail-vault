@@ -6,6 +6,7 @@ pub mod config;
 pub mod platform;
 pub mod state;
 pub mod ui;
+pub mod workers;
 
 fn main() -> eframe::Result {
     tracing_subscriber::fmt()
