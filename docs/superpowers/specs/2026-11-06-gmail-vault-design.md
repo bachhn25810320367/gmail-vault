@@ -188,8 +188,11 @@ record:
 ### Xác thực
 
 - Đăng ký chỉ cho user đầu tiên. Sau đó server trả 403 trừ khi `ALLOW_REGISTRATION=true`.
-- `POST /v1/auth/register` nhận `email`, `auth_key`, `kdf` (salt + params), `wrapped_key` (ciphertext + nonce), `recovery_wrapped_key` (tuỳ chọn).
-- `POST /v1/auth/login` nhận `email` + `auth_key`; server verify Argon2id, trả access token, refresh token, KDF material và wrapped key.
+- `POST /v1/auth/register` nhận `email`, `auth_key`, `kdf` (salt + params), `wrapped_key` (ciphertext + nonce), `recovery_wrapped_key` và `recovery_auth_key`. Cả hai trường recovery là **bắt buộc** khi tạo vault.
+- `GET /v1/auth/kdf?email=...` trả KDF params để thiết bị mới derive `auth_key` trước khi login. Email không tồn tại nhận KDF giả deterministic cùng shape, nên không lộ email nào đã đăng ký.
+- `POST /v1/auth/login` nhận `email` + `auth_key`; server verify Argon2id, trả `user_id`, access token, refresh token, `expires_in`, KDF material và wrapped key.
+- `POST /v1/auth/recover/login` nhận `email` + `recovery_auth_key`; trả `user_id`, tokens, KDF material, wrapped key và `recovery_wrapped_key`.
+- `PUT /v1/keys` nhận `kdf`, `wrapped_key` và cặp `recovery_wrapped_key`/`recovery_auth_key` (hai trường recovery phải đi cùng nhau). Server revoke toàn bộ refresh token **chỉ khi** `kdf` hoặc `wrapped_key` thay đổi (đổi master password); cập nhật recovery-only giữ nguyên session hiện tại.
 - Refresh token lưu trong OS keychain qua crate `keyring`, service `gmail-vault`, account `<server_url>|<email>`.
 - Logout: revoke refresh token trên server + xoá keychain.
 - Rate limit login: 5 lần / 15 phút theo cặp email + IP; vượt trả 429. So sánh hash constant-time.
@@ -202,12 +205,14 @@ record:
   - `HKDF(info="gmail-vault/recovery/v1")` → recovery KEK → wrap `vault_key`, AAD `"gmail-vault:v1:recovery:<user_id>"`.
   - `HKDF(info="gmail-vault/recovery-auth/v1")` → `recovery_auth_key`, gửi server (qua TLS) để server lưu `argon2id(recovery_auth_key)`. Khoá này **không** giải mã được vault.
 - Server lưu bản wrap + hash recovery auth; không lưu recovery key.
-- Quên master password:
-  1. `POST /v1/auth/recover/login` với `{email, recovery_auth_key}` → server verify hash, trả token tạm + KDF material + wrapped key + recovery_wrapped_key.
+- Mã hiển thị: 32 byte random → 52 ký tự Base32 Crockford (body), một dấu `-`, rồi 4 ký tự checksum riêng. Hiển thị theo nhóm 5 ký tự cho dễ đọc; parser bỏ qua mọi separator và kiểm tra checksum.
+- Quên master password là luồng **online-only**, cần server:
+  1. `POST /v1/auth/recover/login` với `{email, recovery_auth_key}` → server verify hash, trả `user_id`, token tạm + KDF material + wrapped key + recovery_wrapped_key.
   2. Client unwrap `vault_key` bằng recovery key.
-  3. Đặt master password mới → `PUT /v1/keys` với wrap mới, recovery wrap mới (nếu tạo lại recovery key) và `recovery_auth_key` mới.
-  4. Server revoke toàn bộ refresh token cũ.
-- Nếu không tạo lại recovery key, giữ nguyên recovery wrap/hash cũ.
+  3. Đặt master password mới → tạo **cả** wrap master mới **và** recovery key mới.
+  4. `PUT /v1/keys` với wrap mới, recovery wrap mới và `recovery_auth_key` mới.
+  5. Server revoke toàn bộ refresh token cũ; recovery key cũ mất hiệu lực.
+- Không hỗ trợ reset/recovery khi offline. Nếu không có server, người dùng chỉ có thể mở khóa bằng master password hiện tại.
 - Mất cả master password và recovery key: dữ liệu không thể khôi phục. UI phải cảnh báo rõ.
 
 ### Auto-lock và clipboard
@@ -505,6 +510,7 @@ Không dùng last-write-wins. Không bao giờ xoá âm thầm thay đổi của
 ### Endpoints
 
 ```
+GET  /v1/auth/kdf
 POST /v1/auth/register
 POST /v1/auth/login
 POST /v1/auth/recover/login
@@ -533,15 +539,18 @@ GET  /healthz
 
 - `user_id` do client sinh (UUID v4) để client có thể dùng làm AAD khi wrap `vault_key` trước khi gọi server.
 - Server từ chối `user_id` trùng hoặc không phải UUID hợp lệ.
+- `recovery_wrapped_key` và `recovery_auth_key` là bắt buộc khi đăng ký; recovery key được tạo cùng lúc với vault.
 - `recovery_auth_key` chỉ dùng để xác thực luồng quên mật khẩu; server hash bằng Argon2id.
 
-**Login** — body `{email, auth_key}` → `{access_token, refresh_token, expires_in, kdf, wrapped_key}`.
+**Prelogin** — `GET /v1/auth/kdf?email=...` → `{kdf}`. Email lạ nhận KDF giả deterministic, không phân biệt được với email tồn tại.
 
-**Recover login** — body `{email, recovery_auth_key}` → `{access_token, refresh_token, expires_in, kdf, wrapped_key, recovery_wrapped_key}`; sai → 401, rate limit như login.
+**Login** — body `{email, auth_key}` → `{user_id, access_token, refresh_token, expires_in, kdf, wrapped_key}`.
+
+**Recover login** — body `{email, recovery_auth_key}` → `{user_id, access_token, refresh_token, expires_in, kdf, wrapped_key, recovery_wrapped_key}`; sai → 401, rate limit như login.
 
 **Refresh** — body `{refresh_token}` → cặp token mới; token cũ bị revoke.
 
-**Keys** — `GET` trả `{kdf, wrapped_key, recovery_wrapped_key}`; `PUT` nhận `{kdf, wrapped_key, recovery_wrapped_key?, recovery_auth_key?}` để đổi master password hoặc tạo lại recovery key, yêu cầu access token. Server revoke toàn bộ refresh token khác sau khi đổi.
+**Keys** — `GET` trả `{kdf, wrapped_key, recovery_wrapped_key}`; `PUT` nhận `{kdf, wrapped_key, recovery_wrapped_key?, recovery_auth_key?}` để đổi master password hoặc tạo lại recovery key, yêu cầu access token. Hai trường recovery phải đi cùng nhau. Server revoke toàn bộ refresh token khác **chỉ khi** `kdf` hoặc `wrapped_key` thay đổi; cập nhật recovery-only giữ nguyên session.
 
 **Errors**:
 
@@ -570,7 +579,7 @@ Mã lỗi: `invalid_request`, `invalid_credentials`, `unauthorized`, `forbidden`
 1. Nhập server URL (mặc định `https://vault.example.com`), email.
 2. Nhập master password + xác nhận, hiện strength meter.
 3. Sinh `vault_key`, KDF, wrap; gọi register.
-4. Hiện recovery key (Base32 chia nhóm 5), nút copy, checkbox "Tôi đã lưu recovery key".
+4. Hiện recovery key (Base32 Crockford chia nhóm 5, kèm checksum 4 ký tự), nút copy, checkbox "Tôi đã lưu recovery key".
 5. Vào Main.
 
 Nếu server không kết nối được ở lần đầu → báo lỗi rõ, cho phép thử lại; không tạo vault local một nửa.
@@ -628,7 +637,7 @@ Hành vi:
 
 - Server URL, device label.
 - Sync interval (15–600 giây), nút sync now.
-- Auto-lock timeout, lock on minimize.
+- Auto-lock timeout (1–30 phút), lock on minimize.
 - Clipboard clear timeout (10–120 giây).
 - Theme sáng/tối, cỡ chữ.
 - Đổi master password; tạo lại recovery key (hiện một lần).
@@ -888,6 +897,9 @@ gmail-vault/
 - Server dùng SQLite WAL, không Postgres, không Docker; binary + systemd + Caddy.
 - E2E encryption; server không giữ plaintext email/mật khẩu Gmail.
 - Client local-first, offline đầy đủ sau lần đăng nhập đầu.
+- Thiết bị mới lấy KDF qua prelogin rồi login; auth response luôn có `user_id` để giải mã wrapped key đúng AAD.
+- Đổi master password revoke refresh token cũ; cập nhật recovery-only không revoke session.
+- Recovery reset là online-only và luôn xoay cả master wrap lẫn recovery key.
 - UI tiếng Việt, ngày `dd/MM/yyyy`, tiền VND/USD.
 - Auto-lock mặc định 5 phút; clipboard tự xoá sau 30 giây.
 - Backup local tự động giữ 10 bản; recovery key là phương án cứu duy nhất khi quên master password.
