@@ -14,10 +14,7 @@ async fn test_app() -> axum::Router {
         _ => None,
     })
     .unwrap();
-    build_router(AppState {
-        pool,
-        config: Arc::new(config),
-    })
+    build_router(AppState::new(pool, Arc::new(config)))
 }
 
 #[tokio::test]

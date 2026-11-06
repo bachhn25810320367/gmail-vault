@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use vault_server::{AppState, build_router, config::Config, db};
 
@@ -12,10 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = db::connect(&config.database_url).await?;
     db::migrate(&pool).await?;
     let addr = config.bind_addr;
-    let app = build_router(AppState {
-        pool,
-        config: std::sync::Arc::new(config),
-    });
+    let app = build_router(AppState::new(pool, Arc::new(config)));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "vault-server listening");
     axum::serve(
