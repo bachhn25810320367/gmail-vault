@@ -72,6 +72,8 @@ struct WorkerState {
     status: SyncStatus,
 }
 
+// Worker constructor needs its whole context; a struct for it would have exactly one caller.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_vault(
     meta: LocalMeta,
     vault: UnlockedVault,
