@@ -95,6 +95,7 @@ pub async fn register(app: &TestApp, email: &str) -> (StatusCode, Value) {
     .await
 }
 
+#[allow(dead_code)] // used by the auth tests; kept for future integration tests
 pub async fn login(app: &TestApp, email: &str) -> (StatusCode, Value) {
     request(
         app,

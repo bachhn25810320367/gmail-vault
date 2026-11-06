@@ -66,7 +66,7 @@ fn server_argon2() -> Result<Argon2<'static>, AppError> {
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
-pub fn hash_secret(secret: &[u8]) -> Result<String, AppError> {
+pub(crate) fn hash_secret(secret: &[u8]) -> Result<String, AppError> {
     let salt = SaltString::generate(&mut PwOsRng);
     server_argon2()?
         .hash_password(secret, &salt)

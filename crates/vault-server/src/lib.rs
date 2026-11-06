@@ -41,7 +41,12 @@ pub fn build_router(state: AppState) -> Router {
     let max = state.config.max_body_bytes;
     Router::new()
         .route("/healthz", get(api::health::health))
-        .nest("/v1", api::auth::routes())
+        .nest(
+            "/v1",
+            api::auth::routes()
+                .merge(api::keys::routes())
+                .merge(api::sync::routes()),
+        )
         .layer(RequestBodyLimitLayer::new(max))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
