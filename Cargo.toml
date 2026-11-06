@@ -41,3 +41,10 @@ tower-http = { version = "0.6", features = ["limit", "trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
 http-body-util = "0.1"
+eframe = "0.32"
+egui = "0.32"
+egui_extras = "0.32"
+rfd = "0.15"
+arboard = "3"
+keyring = "3"
+crossbeam-channel = "0.5"
