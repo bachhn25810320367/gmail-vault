@@ -4,6 +4,7 @@ pub mod error;
 pub mod model;
 pub mod portability;
 pub mod store;
+pub mod sync;
 
 pub use crypto::{
     EncryptedRecord, KdfParams, NewVault, RecordRow, RecoveryMaterial, UnlockedVault, WrappedKey,
