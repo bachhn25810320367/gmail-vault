@@ -6,7 +6,7 @@ use vault_core::{Account, LocalMeta, LocalStore, UnlockedVault, unwrap_vault_key
 use crate::state::UnlockedSession;
 
 pub enum UnlockEvent {
-    Done(UnlockedSession),
+    Done(Box<UnlockedSession>),
     Failed(String),
 }
 
@@ -36,7 +36,7 @@ pub fn start_unlock(meta: LocalMeta, password: String, db_path: PathBuf) -> Rece
             })
         })();
         let _ = tx.send(match result {
-            Ok(s) => UnlockEvent::Done(s),
+            Ok(s) => UnlockEvent::Done(Box::new(s)),
             Err(e) => UnlockEvent::Failed(e),
         });
     });

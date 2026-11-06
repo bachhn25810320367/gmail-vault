@@ -67,9 +67,11 @@ mod tests {
     fn config_roundtrip() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("config.json");
-        let mut cfg = ClientConfig::default();
-        cfg.email = Some("owner@example.com".into());
-        cfg.sync_interval_secs = 120;
+        let cfg = ClientConfig {
+            email: Some("owner@example.com".into()),
+            sync_interval_secs: 120,
+            ..Default::default()
+        };
         cfg.save(&path).unwrap();
         let loaded = ClientConfig::load(&path);
         assert_eq!(loaded.email, cfg.email);
@@ -88,10 +90,12 @@ mod tests {
     fn load_clamps_settings_to_supported_ranges() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("config.json");
-        let mut cfg = ClientConfig::default();
-        cfg.sync_interval_secs = 1;
-        cfg.auto_lock_minutes = 0;
-        cfg.clipboard_secs = 999;
+        let cfg = ClientConfig {
+            sync_interval_secs: 1,
+            auto_lock_minutes: 0,
+            clipboard_secs: 999,
+            ..Default::default()
+        };
         cfg.save(&path).unwrap();
         let loaded = ClientConfig::load(&path);
         assert_eq!(loaded.sync_interval_secs, 15);

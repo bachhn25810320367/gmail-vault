@@ -36,13 +36,12 @@ impl VaultApp {
         let mut screen = Screen::Setup;
         let mut local_meta = None;
 
-        if db_path.exists() {
-            if let Ok(store) = LocalStore::open(&db_path) {
-                if let Ok(Some(meta)) = store.load_meta() {
-                    local_meta = Some(meta);
-                    screen = Screen::Unlock;
-                }
-            }
+        if db_path.exists()
+            && let Ok(store) = LocalStore::open(&db_path)
+            && let Ok(Some(meta)) = store.load_meta()
+        {
+            local_meta = Some(meta);
+            screen = Screen::Unlock;
         }
 
         let setup_form = SetupForm::from_config(&config);
@@ -269,42 +268,42 @@ impl VaultApp {
 impl eframe::App for VaultApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll background tasks
-        if let Some(ref rx) = self.setup_rx {
-            if let Ok(event) = rx.try_recv() {
-                self.setup_rx = None;
-                match event {
-                    SetupEvent::Done { recovery_code } => {
-                        self.error = None;
-                        self.recovery_code = Some(recovery_code);
-                        self.screen = Screen::ShowRecovery;
-                        self.config.server_url = self.setup_form.server_url.clone();
-                        self.config.email = Some(self.setup_form.email.clone());
-                        let _ = self.config.save(&platform::config_path());
-                        if let Ok(store) = LocalStore::open(&platform::db_path()) {
-                            if let Ok(Some(meta)) = store.load_meta() {
-                                self.local_meta = Some(meta);
-                            }
-                        }
+        if let Some(ref rx) = self.setup_rx
+            && let Ok(event) = rx.try_recv()
+        {
+            self.setup_rx = None;
+            match event {
+                SetupEvent::Done { recovery_code } => {
+                    self.error = None;
+                    self.recovery_code = Some(recovery_code);
+                    self.screen = Screen::ShowRecovery;
+                    self.config.server_url = self.setup_form.server_url.clone();
+                    self.config.email = Some(self.setup_form.email.clone());
+                    let _ = self.config.save(&platform::config_path());
+                    if let Ok(store) = LocalStore::open(&platform::db_path())
+                        && let Ok(Some(meta)) = store.load_meta()
+                    {
+                        self.local_meta = Some(meta);
                     }
-                    SetupEvent::Failed(err) => {
-                        self.error = Some(err);
-                    }
+                }
+                SetupEvent::Failed(err) => {
+                    self.error = Some(err);
                 }
             }
         }
 
-        if let Some(ref rx) = self.unlock_rx {
-            if let Ok(event) = rx.try_recv() {
-                self.unlock_rx = None;
-                match event {
-                    UnlockEvent::Done(session) => {
-                        self.error = None;
-                        self.session = Some(session);
-                        self.screen = Screen::Main;
-                    }
-                    UnlockEvent::Failed(err) => {
-                        self.error = Some(err);
-                    }
+        if let Some(ref rx) = self.unlock_rx
+            && let Ok(event) = rx.try_recv()
+        {
+            self.unlock_rx = None;
+            match event {
+                UnlockEvent::Done(session) => {
+                    self.error = None;
+                    self.session = Some(*session);
+                    self.screen = Screen::Main;
+                }
+                UnlockEvent::Failed(err) => {
+                    self.error = Some(err);
                 }
             }
         }

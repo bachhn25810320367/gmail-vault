@@ -165,24 +165,24 @@ impl VaultApi {
         if !status.is_success() {
             let status_code = status.as_u16();
             let text = resp.text().await.unwrap_or_default();
-            if let Ok(err_payload) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(err_obj) = err_payload.get("error") {
-                    let code = err_obj
-                        .get("code")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let message = err_obj
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or(&text)
-                        .to_string();
-                    return Err(ApiError::Server {
-                        status: status_code,
-                        code,
-                        message,
-                    });
-                }
+            if let Ok(err_payload) = serde_json::from_str::<serde_json::Value>(&text)
+                && let Some(err_obj) = err_payload.get("error")
+            {
+                let code = err_obj
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let message = err_obj
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or(&text)
+                    .to_string();
+                return Err(ApiError::Server {
+                    status: status_code,
+                    code,
+                    message,
+                });
             }
             return Err(ApiError::Server {
                 status: status_code,
